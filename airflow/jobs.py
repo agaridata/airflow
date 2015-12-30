@@ -311,7 +311,7 @@ class SchedulerJob(BaseJob):
                 for ti in blocking_tis])
             from airflow import ascii
             email_content = """\
-            Here's a list of tasks thas missed their SLAs:
+            Here is a list of tasks that have missed their SLAs:
             <pre><code>{task_list}\n<code></pre>
             Blocking tasks:
             <pre><code>{blocking_task_list}\n{ascii.bug}<code></pre>
