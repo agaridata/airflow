@@ -309,33 +309,41 @@ class SchedulerJob(BaseJob):
             blocking_task_list = "\n".join([
                 ti.task_id + ' on ' + ti.execution_date.isoformat()
                 for ti in blocking_tis])
-            from airflow import ascii
-            email_content = """\
-            Here is a list of tasks that have missed their SLAs:
-            <pre><code>{task_list}\n<code></pre>
-            Blocking tasks:
-            <pre><code>{blocking_task_list}\n{ascii.bug}<code></pre>
-            """.format(**locals())
-            emails = []
-            for t in dag.tasks:
-                if t.email:
-                    if isinstance(t.email, basestring):
-                        l = [t.email]
-                    elif isinstance(t.email, (list, tuple)):
-                        l = t.email
-                    for email in l:
-                        if email not in emails:
-                            emails.append(email)
-            if emails and len(slas):
-                utils.send_email(
-                    emails,
-                    "[airflow] SLA miss on DAG=" + dag.dag_id,
-                    email_content)
+
+            sla_alert_func = dag.sla_alert_func or send_sla_email
+            sent = sla_alert_func(dag, task_list, blocking_task_list, slas, blocking_tis)
+            if sent:
                 for sla in slas:
                     sla.email_sent = True
                     session.merge(sla)
             session.commit()
             session.close()
+
+    def send_sla_email(dag, task_list, blocking_task_list, slas, blocking_tis):
+        from airflow import ascii
+        email_content = """\
+        Here is a list of tasks that have missed their SLAs:
+        <pre><code>{task_list}\n<code></pre>
+        Blocking tasks:
+        <pre><code>{blocking_task_list}\n{ascii.bug}<code></pre>
+        """.format(**locals())
+        emails = []
+        for t in dag.tasks:
+            if t.email:
+                if isinstance(t.email, basestring):
+                    l = [t.email]
+                elif isinstance(t.email, (list, tuple)):
+                    l = t.email
+                for email in l:
+                    if email not in emails:
+                        emails.append(email)
+        if emails and len(slas):
+            utils.send_email(
+                emails,
+                "[airflow] SLA miss on DAG=" + dag.dag_id,
+                email_content)
+            return True
+        return False
 
     def import_errors(self, dagbag):
         session = settings.Session()
