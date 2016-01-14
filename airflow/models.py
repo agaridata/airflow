@@ -2000,6 +2000,9 @@ class DAG(LoggingMixin):
     :param dagrun_timeout: specify how long a DagRun should be up before
         timing out / failing, so that new DagRuns can be created
     :type dagrun_timeout: datetime.timedelta
+    :param sla_miss_callback: specify a function to call when reporting SLA
+        timeouts.
+    :type sla_miss_callback: types.FunctionType
     """
 
     def __init__(
@@ -2014,6 +2017,7 @@ class DAG(LoggingMixin):
             max_active_runs=configuration.getint(
                 'core', 'max_active_runs_per_dag'),
             dagrun_timeout=None,
+            sla_miss_callback=None,
             params=None):
 
         self.user_defined_macros = user_defined_macros
@@ -2041,6 +2045,7 @@ class DAG(LoggingMixin):
         self.concurrency = concurrency
         self.max_active_runs = max_active_runs
         self.dagrun_timeout = dagrun_timeout
+        self.sla_miss_callback = sla_miss_callback
 
         self._comps = {
             'dag_id',
