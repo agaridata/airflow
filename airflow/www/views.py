@@ -1327,7 +1327,7 @@ class Airflow(BaseView):
             'airflow/chart.html',
             dag=dag,
             data=json.dumps(all_data),
-            chart_options={'plotOptions': {'series': {'animation': False}}, 'yAxis': {'title': {'text': 'hours'}}},
+            chart_options={'yAxis': {'title': {'text': 'hours'}}},
             height="700px",
             demo_mode=configuration.getboolean('webserver', 'demo_mode'),
             root=root,
@@ -1371,7 +1371,7 @@ class Airflow(BaseView):
             dag=dag,
             data=json.dumps(all_data),
             height="700px",
-            chart_options={'plotOptions': {'series': {'animation': False}}, 'yAxis': {'title': {'text': 'hours after 00:00'}}},
+            chart_options={'yAxis': {'title': {'text': 'hours after 00:00'}}},
             demo_mode=configuration.getboolean('webserver', 'demo_mode'),
             root=root,
         )
