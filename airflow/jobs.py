@@ -20,21 +20,13 @@ from sqlalchemy import Column, Integer, String, DateTime, func, Index, or_
 from sqlalchemy.orm.session import make_transient
 
 from airflow import executors, models, settings, utils
-from airflow import configuration
+from airflow import configuration as conf
 from airflow.utils import AirflowException, State, LoggingMixin
 
 
 Base = models.Base
 ID_LEN = models.ID_LEN
-
-# Setting up a statsd client if needed
-statsd = None
-if configuration.getboolean('scheduler', 'statsd_on'):
-    from statsd import StatsClient
-    statsd = StatsClient(
-        host=configuration.get('scheduler', 'statsd_host'),
-        port=configuration.getint('scheduler', 'statsd_port'),
-        prefix=configuration.get('scheduler', 'statsd_prefix'))
+Stats = settings.Stats
 
 
 class BaseJob(Base, LoggingMixin):
@@ -70,7 +62,7 @@ class BaseJob(Base, LoggingMixin):
     def __init__(
             self,
             executor=executors.DEFAULT_EXECUTOR,
-            heartrate=configuration.getfloat('scheduler', 'JOB_HEARTBEAT_SEC'),
+            heartrate=conf.getfloat('scheduler', 'JOB_HEARTBEAT_SEC'),
             *args, **kwargs):
         self.hostname = socket.gethostname()
         self.executor = executor
@@ -84,7 +76,7 @@ class BaseJob(Base, LoggingMixin):
     def is_alive(self):
         return (
             (datetime.now() - self.latest_heartbeat).seconds <
-            (configuration.getint('scheduler', 'JOB_HEARTBEAT_SEC') * 2.1)
+            (conf.getint('scheduler', 'JOB_HEARTBEAT_SEC') * 2.1)
         )
 
     def kill(self):
@@ -150,8 +142,7 @@ class BaseJob(Base, LoggingMixin):
         self.logger.debug('[heart] Boom.')
 
     def run(self):
-        if statsd:
-            statsd.incr(self.__class__.__name__.lower()+'_start', 1, 1)
+        Stats.incr(self.__class__.__name__.lower()+'_start', 1, 1)
         # Adding an entry in the DB
         session = settings.Session()
         self.state = State.RUNNING
@@ -171,8 +162,7 @@ class BaseJob(Base, LoggingMixin):
         session.commit()
         session.close()
 
-        if statsd:
-            statsd.incr(self.__class__.__name__.lower()+'_end', 1, 1)
+        Stats.incr(self.__class__.__name__.lower()+'_end', 1, 1)
 
     def _execute(self):
         raise NotImplementedError("This method needs to be overridden")
@@ -227,7 +217,7 @@ class SchedulerJob(BaseJob):
         self.do_pickle = do_pickle
         super(SchedulerJob, self).__init__(*args, **kwargs)
 
-        self.heartrate = configuration.getint('scheduler', 'SCHEDULER_HEARTBEAT_SEC')
+        self.heartrate = conf.getint('scheduler', 'SCHEDULER_HEARTBEAT_SEC')
 
     @utils.provide_session
     def manage_slas(self, dag, session=None):
@@ -263,8 +253,8 @@ class SchedulerJob(BaseJob):
             dttm = ti.execution_date
             if task.sla:
                 dttm = dag.following_schedule(dttm)
-                following_schedule = dag.following_schedule(dttm)
                 while dttm < datetime.now():
+                    following_schedule = dag.following_schedule(dttm)
                     if following_schedule + task.sla < datetime.now():
                         session.merge(models.SlaMiss(
                             task_id=ti.task_id,
@@ -581,8 +571,7 @@ class SchedulerJob(BaseJob):
                     overloaded_dags.add(dag.dag_id)
                     continue
                 if ti.are_dependencies_met():
-                    executor.queue_task_instance(
-                        ti, force=True, pickle_id=pickle_id)
+                    executor.queue_task_instance(ti, pickle_id=pickle_id)
                     open_slots -= 1
                 else:
                     session.delete(ti)
@@ -624,15 +613,15 @@ class SchedulerJob(BaseJob):
                         dagbag.collect_dags(only_if_updated=True)
                 except:
                     self.logger.error("Failed at reloading the dagbag")
-                    if statsd:
-                        statsd.incr('dag_refresh_error', 1, 1)
+                    Stats.incr('dag_refresh_error', 1, 1)
                     sleep(5)
 
                 if dag_id:
                     dags = [dagbag.dags[dag_id]]
                 else:
                     dags = [
-                        dag for dag in dagbag.dags.values() if not dag.parent_dag]
+                        dag for dag in dagbag.dags.values()
+                        if not dag.parent_dag]
                 paused_dag_ids = dagbag.paused_dags()
                 for dag in dags:
                     self.logger.debug("Scheduling {}".format(dag.dag_id))
@@ -666,11 +655,12 @@ class SchedulerJob(BaseJob):
                     self.logger.error("Tachycardia!")
             except Exception as deep_e:
                 self.logger.exception(deep_e)
+            finally:
+                settings.Session.remove()
         executor.end()
 
     def heartbeat_callback(self):
-        if statsd:
-            statsd.gauge('scheduler_heartbeat', 1, 1)
+        Stats.gauge('scheduler_heartbeat', 1, 1)
 
 
 class BackfillJob(BaseJob):
@@ -871,3 +861,24 @@ class LocalTaskJob(BaseJob):
 
     def on_kill(self):
         self.process.terminate()
+
+    """
+    def heartbeat_callback(self):
+        if datetime.now() - self.start_date < timedelta(seconds=300):
+            return
+        # Suicide pill
+        TI = models.TaskInstance
+        ti = self.task_instance
+        session = settings.Session()
+        state = session.query(TI.state).filter(
+            TI.dag_id==ti.dag_id, TI.task_id==ti.task_id,
+            TI.execution_date==ti.execution_date).scalar()
+        session.commit()
+        session.close()
+        if state != State.RUNNING:
+            logging.warning(
+                "State of this instance has been externally set to "
+                "{self.task_instance.state}. "
+                "Taking the poison pill. So long.".format(**locals()))
+            self.process.terminate()
+    """

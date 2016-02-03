@@ -49,6 +49,7 @@ Operator API
         BashOperator,
         BranchPythonOperator,
         TriggerDagRunOperator,
+        DockerOperator,
         DummyOperator,
         EmailOperator,
         ExternalTaskSensor,
@@ -88,6 +89,10 @@ Community-contributed Operators
 .. automodule:: airflow.contrib.operators
     :show-inheritance:
     :members:
+        BigQueryOperator,
+        BigQueryToCloudStorageOperator,
+        GoogleCloudStorageDownloadOperator,
+        SSHExecuteOperator,
         VerticaOperator,
         VerticaToHiveTransfer
 
@@ -207,6 +212,8 @@ Community contributed hooks
 .. automodule:: airflow.contrib.hooks
     :show-inheritance:
     :members:
+        BigQueryHook,
+        GoogleCloudStorageHook,
         VerticaHook,
         FTPHook,
         SSHHook

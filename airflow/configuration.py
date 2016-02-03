@@ -11,6 +11,7 @@ from configparser import ConfigParser
 import errno
 import logging
 import os
+import subprocess
 
 try:
     from cryptography.fernet import Fernet
@@ -41,6 +42,22 @@ def expand_env_var(env_var):
         else:
             env_var = interpolated
 
+def run_command(command):
+    """
+    Runs command and returns stdout
+    """
+    process = subprocess.Popen(
+        command.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    output, stderr = process.communicate()
+
+    if process.returncode != 0:
+        raise AirflowException(
+            "Cannot execute {}. Error code is: {}. Output: {}, Stderr: {}"
+            .format(cmd, process.returncode, output, stderr)
+        )
+
+    return output
+
 
 class AirflowConfigException(Exception):
     pass
@@ -54,8 +71,10 @@ defaults = {
         'security': None,
         'donot_pickle': False,
         's3_log_folder': '',
+        'encrypt_s3_logs': False,
         'dag_concurrency': 16,
         'max_active_runs_per_dag': 16,
+        'executor': 'SequentialExecutor',
     },
     'webserver': {
         'base_url': 'http://localhost:8080',
@@ -93,6 +112,9 @@ defaults = {
         'reinit_frequency': '3600',
         'kinit_path': 'kinit',
         'keytab': 'airflow.keytab',
+    },
+    'github_enterprise': {
+        'api_rev': 'v3'
     }
 }
 
@@ -319,13 +341,32 @@ authenticate = true
 
 class ConfigParserWithDefaults(ConfigParser):
 
+    # These configuration elements can be fetched as the stdout of commands
+    # following the "{section}__{name}__cmd" pattern, the idea behind this is to not
+    # store password on boxes in text files.
+    as_command_stdout = {
+        ('core', 'sql_alchemy_conn'),
+        ('celery', 'broker_url'),
+        ('celery', 'celery_result_backend')
+    }
+
     def __init__(self, defaults, *args, **kwargs):
         self.defaults = defaults
         ConfigParser.__init__(self, *args, **kwargs)
+        self.is_validated = False
+
+    def _validate(self):
+        if self.get("core", "executor") != 'SequentialExecutor' \
+                and "sqlite" in self.get('core', 'sql_alchemy_conn'):
+            raise AirflowConfigException("error: cannot use sqlite with the {}".
+                                                       format(self.get('core', 'executor')))
+
+        self.is_validated = True
 
     def get(self, section, key, **kwargs):
         section = str(section).lower()
         key = str(key).lower()
+        fallback_key = key + '_cmd'
         d = self.defaults
 
         # environment variables get precedence
@@ -337,6 +378,11 @@ class ConfigParserWithDefaults(ConfigParser):
         # ...then the config file
         elif self.has_option(section, key):
             return expand_env_var(ConfigParser.get(self, section, key, **kwargs))
+
+        elif ((section, key) in ConfigParserWithDefaults.as_command_stdout 
+            and self.has_option(section, fallback_key)):
+            command = self.get(section, fallback_key)
+            return run_command(command)
 
         # ...then the defaults
         elif section in d and key in d[section]:
@@ -367,6 +413,9 @@ class ConfigParserWithDefaults(ConfigParser):
     def getfloat(self, section, key):
         return float(self.get(section, key))
 
+    def read(self, filenames):
+        ConfigParser.read(self, filenames)
+        self._validate()
 
 def mkdir_p(path):
     try:
@@ -439,7 +488,6 @@ conf.read(AIRFLOW_CONFIG)
 def get(section, key, **kwargs):
     return conf.get(section, key, **kwargs)
 
-
 def getboolean(section, key):
     return conf.getboolean(section, key)
 
@@ -455,6 +503,11 @@ def getint(section, key):
 def has_option(section, key):
     return conf.has_option(section, key)
 
+def remove_option(section, option):
+    return conf.remove_option(section, option)
+
+def set(section, option, value):
+    return conf.set(section, option, value)
 
 ########################
 # convenience method to access config entries

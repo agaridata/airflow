@@ -51,6 +51,7 @@ doc = [
     'sphinx-rtd-theme>=0.1.6',
     'Sphinx-PyPI-upload>=0.2.1'
 ]
+docker = ['docker-py>=1.6.0']
 druid = ['pydruid>=0.2.1']
 hdfs = ['snakebite>=2.4.13']
 webhdfs = ['hdfs[dataframe,avro,kerberos]>=2.0.4']
@@ -80,9 +81,11 @@ password = [
     'bcrypt>=2.0.0',
     'flask-bcrypt>=0.7.1',
 ]
+github_enterprise = ['Flask-OAuthlib>=0.9.1']
+qds = ['qds-sdk>=1.9.0']
 
 all_dbs = postgres + mysql + hive + mssql + hdfs + vertica
-devel = all_dbs + doc + samba + s3 + ['nose'] + slack + crypto + oracle
+devel = all_dbs + doc + samba + s3 + ['nose'] + slack + crypto + oracle + docker
 
 setup(
     name='airflow',
@@ -95,15 +98,16 @@ setup(
     scripts=['airflow/bin/airflow'],
     install_requires=[
         'alembic>=0.8.3, <0.9',
+        'babel>=1.3, <2.0',
         'chartkick>=0.4.2, < 0.5',
         'croniter>=0.3.8, <0.4',
         'dill>=0.2.2, <0.3',
         'flask>=0.10.1, <0.11',
-        'flask-admin==1.2.0',
+        'flask-admin>=1.4.0, <2.0.0',
         'flask-cache>=0.13.1, <0.14',
         'flask-login==0.2.11',
         'future>=0.15.0, <0.16',
-        'gunicorn>=19.3.0, <20.0',
+        'gunicorn>=19.3.0, <19.4.0',  # 19.4.? seemed to have issues
         'jinja2>=2.7.3, <3.0',
         'markdown>=2.5.2, <3.0',
         'pandas>=0.15.2, <1.0.0',
@@ -123,6 +127,7 @@ setup(
         'crypto': crypto,
         'devel': devel,
         'doc': doc,
+        'docker': docker,
         'druid': druid,
         'hdfs': hdfs,
         'hive': hive,
@@ -140,6 +145,8 @@ setup(
         'webhdfs': webhdfs,
         'kerberos': kerberos,
         'password': password,
+        'github_enterprise': github_enterprise,
+        'qds': qds
     },
     author='Maxime Beauchemin',
     author_email='maximebeauchemin@gmail.com',
