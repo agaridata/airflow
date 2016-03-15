@@ -25,7 +25,7 @@ from airflow.utils import LoggingMixin, round_time
 from lxml import html
 from airflow.utils import AirflowException
 
-NUM_EXAMPLE_DAGS = 7
+NUM_EXAMPLE_DAGS = 8
 DEV_NULL = '/dev/null'
 DEFAULT_DATE = datetime(2015, 1, 1)
 DEFAULT_DATE_ISO = DEFAULT_DATE.isoformat()
@@ -497,6 +497,14 @@ class CliTests(unittest.TestCase):
         cli.test(self.parser.parse_args([
             'test', 'example_bash_operator', 'runme_0', '--dry_run',
             DEFAULT_DATE.isoformat()]))
+
+    def test_cli_test_with_params(self):
+        cli.test(self.parser.parse_args([
+            'test', 'example_passing_params_via_test_command', 'run_this',
+            '-tp', '{"foo":"bar"}', DEFAULT_DATE.isoformat()]))
+        cli.test(self.parser.parse_args([
+            'test', 'example_passing_params_via_test_command', 'also_run_this',
+            '-tp', '{"foo":"bar"}', DEFAULT_DATE.isoformat()]))
 
     def test_cli_run(self):
         cli.run(self.parser.parse_args([
